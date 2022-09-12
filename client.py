@@ -174,7 +174,7 @@ if __name__ == "__main__":
     time.sleep(2)
 
     task: dict = dict(
-        addr=ev3_client.user_acc.get_address(), route=[[50, 50, 3], [20, 0, 2], [100, 100, 1]], price=144000001
+        addr=ev3_client.user_acc.get_address(), route=[[50, 50, 3], [20, 0, 2], [100, 100, 1]], price=15400001
     )
 
     while True:
