@@ -14,7 +14,6 @@ from paho.mqtt.client import Client
 from robonomicsinterface import (
     Account,
     ipfs_get_content,
-    ipfs_upload_content,
     ipfs_32_bytes_to_qm_hash,
     Liability,
     Subscriber,
@@ -33,7 +32,7 @@ class EV3Client:
 
     def __init__(self):
         self.seed: str = getenv("SEED")
-        self.user_acc: Account = Account(seed=self.seed)
+        self.user_acc: Account = Account(seed=self.seed, remote_ws="ws://127.0.0.1:9944")
 
         """
         Insert MQTT broker address:port here
@@ -47,16 +46,14 @@ class EV3Client:
         self.mqtt_client_id: str = "user_"
 
         self.mqtt_topics: list = [("offer", 0), ("response", 0)]
-        self.mqtt_client: Client = self.connect_to_mqtt()
+        self.mqtt_client: tp.Optional[Client] = None
 
         self.index: tp.Optional[int] = None
         self.tr_hash: tp.Optional[str] = None
 
-    def connect_to_mqtt(self) -> Client:
+    def connect_to_mqtt(self):
         """
-        Connect to a MQTT broker.
-
-        :return: MQTT client instance.
+        Connect to a MQTT broker. Set up subscribers.
 
         """
 
@@ -68,10 +65,16 @@ class EV3Client:
                 raise Exception
 
         # Set Connecting Client ID
-        client: Client = Client(self.mqtt_client_id)
-        client.on_connect = on_connect
-        client.connect(self.mqtt_broker, self.mqtt_port)
-        return client
+        self.mqtt_client: Client = Client(self.mqtt_client_id)
+        self.mqtt_client.on_connect = on_connect
+        self.mqtt_client.connect(self.mqtt_broker, self.mqtt_port)
+
+        self.mqtt_client.subscribe(self.mqtt_topics[1][0])
+        self.mqtt_client.on_message = self.on_response
+
+        self.mqtt_client.loop_forever()
+
+        logger.info("Started MQTT subscriber.")
 
     def publish_offer(self, message: str):
         """
@@ -86,7 +89,7 @@ class EV3Client:
         if status == 0:
             logger.info(f"Sent `{message}` to topic `{self.mqtt_topics[0][0]}`.")
         else:
-            logger.error(f"Failed to send message to topic {self.mqtt_topics[0][0]}")
+            logger.error(f"Failed to send message to topic {self.mqtt_topics[0][0]}: {result}")
 
     def on_response(self, client, userdata, msg):
         """
@@ -96,24 +99,17 @@ class EV3Client:
         :param userdata: MQTT userdata.
         :param msg: Income message.
         """
-        logger.info(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
-        response: dict = literal_eval(msg.payload.decode())
-        if response["res"]:
-            logger.info(f"Offer accepted, the agent has sent liability credentials, creating new liability.")
-            self.index, self.tr_hash = self.create_liability(response["technics"], response["price"],
-                                                             response["ev3_addr"], response["signature"])
-            logger.info(f"New liability with index {self.index} created at {self.tr_hash}!")
 
-    def subscribe_mqtt(self):
-        """
-        Subscribe to a 'negotiations' topic on a Mosquitto broker.
-
-        """
-
-        self.mqtt_client.subscribe(self.mqtt_topics[1][0])
-        self.mqtt_client.on_message = self.on_response
-
-        logger.info("Started MQTT subscriber.")
+        try:
+            logger.info(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
+            response: dict = literal_eval(msg.payload.decode())
+            if response["res"]:
+                logger.info(f"Offer accepted, the agent has sent liability credentials, creating new liability.")
+                self.index, self.tr_hash = self.create_liability(response["technics"], response["price"],
+                                                                 response["ev3_addr"], response["signature"])
+                logger.info(f"New liability with index {self.index} created at {self.tr_hash}!")
+        except Exception:
+            logger.info(f"Error parsing response: {traceback.format_exc()}")
 
     def callback_new_report(self, data):
         """
@@ -134,6 +130,18 @@ class EV3Client:
         """
 
         Subscriber(account=self.user_acc, subscribed_event=SubEvent.NewReport, subscription_handler=self.callback_new_report)
+
+    def run(self):
+        """
+        Run MQTT subscriber and NewReport subscribers in parallel threads.
+
+        """
+
+        mqtt_subscriber = Thread(target=self.connect_to_mqtt)
+        mqtt_subscriber.start()
+
+        new_report_subscriber = Thread(target=self.subscribe_new_reports)
+        new_report_subscriber.start()
 
     def create_liability(self, technics: str, economics: int, promisor: str, promisor_signature: str):
         """
@@ -160,20 +168,22 @@ class EV3Client:
 
 
 if __name__ == '__main__':
+
+    logging.basicConfig(level=logging.INFO)
+
     ev3_client: EV3Client = EV3Client()
+    ev3_client.run()
 
-    mqtt_subscriber = Thread(target=ev3_client.subscribe_mqtt)
-    mqtt_subscriber.start()
-
-    new_report_subscriber = Thread(target=ev3_client.subscribe_new_reports)
-    new_report_subscriber.start()
+    time.sleep(2)
 
     task: dict = dict(
         addr=ev3_client.user_acc.get_address(),
         route=[[50, 50, 3], [20, 0, 2], [100, 100, 5]],
-        price=10**9
+        price=144000001
     )
 
-    ev3_client.publish_offer(str(task))
+    while True:
+        input()
+        ev3_client.publish_offer(str(task))
 
 
