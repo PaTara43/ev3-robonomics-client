@@ -182,8 +182,4 @@ if __name__ == '__main__':
         price=144000001
     )
 
-    while True:
-        input()
-        ev3_client.publish_offer(str(task))
-
 
