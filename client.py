@@ -11,14 +11,7 @@ import typing as tp
 from ast import literal_eval
 from os import getenv
 from paho.mqtt.client import Client
-from robonomicsinterface import (
-    Account,
-    ipfs_get_content,
-    ipfs_32_bytes_to_qm_hash,
-    Liability,
-    Subscriber,
-    SubEvent,
-)
+from robonomicsinterface import Account, ipfs_get_content, ipfs_32_bytes_to_qm_hash, Liability, Subscriber, SubEvent
 from threading import Thread
 
 logger = logging.getLogger(__name__)
@@ -101,13 +94,15 @@ class EV3Client:
         """
 
         try:
-            logger.info(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
             response: dict = literal_eval(msg.payload.decode())
-            if response["res"]:
-                logger.info(f"Offer accepted, the agent has sent liability credentials, creating new liability.")
-                self.index, self.tr_hash = self.create_liability(response["technics"], response["price"],
-                                                                 response["ev3_addr"], response["signature"])
-                logger.info(f"New liability with index {self.index} created at {self.tr_hash}!")
+            if response["addr"] == self.user_acc.get_address():
+                logger.info(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
+                if response["res"]:
+                    logger.info(f"Offer accepted, the agent has sent liability credentials, creating new liability.")
+                    self.index, self.tr_hash = self.create_liability(
+                        response["technics"], response["price"], response["ev3_addr"], response["signature"]
+                    )
+                    logger.info(f"New liability with index {self.index} created at {self.tr_hash}!")
         except Exception:
             logger.info(f"Error parsing response: {traceback.format_exc()}")
 
@@ -118,10 +113,9 @@ class EV3Client:
         :param data: Report data.
 
         """
-        if data["index"] == self.index:
-            logger.info(f"Robot has reported the liability with {data}!")
-            report_content = ipfs_get_content(cid=ipfs_32_bytes_to_qm_hash(data["payload"]["hash_"]))
-            logger.info(f"Report content: {report_content}")
+        if data[1]["index"] == self.index:
+            report_content = ipfs_get_content(cid=ipfs_32_bytes_to_qm_hash(data[1]["payload"]["hash"]))
+            logger.info(f"Robot has reported the liability with: {report_content}")
 
     def subscribe_new_reports(self):
         """
@@ -129,7 +123,9 @@ class EV3Client:
         :return:
         """
 
-        Subscriber(account=self.user_acc, subscribed_event=SubEvent.NewReport, subscription_handler=self.callback_new_report)
+        Subscriber(
+            account=self.user_acc, subscribed_event=SubEvent.NewReport, subscription_handler=self.callback_new_report
+        )
 
     def run(self):
         """
@@ -158,16 +154,17 @@ class EV3Client:
         liability_manager = Liability(self.user_acc)
         promisee_signature = liability_manager.sign_liability(technics, economics)
 
-        return liability_manager.create(technics_hash=technics,
-                                        economics=economics,
-                                        promisee=self.user_acc.get_address(),
-                                        promisor=promisor,
-                                        promisee_params_signature=promisee_signature,
-                                        promisor_params_signature=promisor_signature
-                                        )
+        return liability_manager.create(
+            technics_hash=technics,
+            economics=economics,
+            promisee=self.user_acc.get_address(),
+            promisor=promisor,
+            promisee_params_signature=promisee_signature,
+            promisor_params_signature=promisor_signature,
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO)
 
@@ -177,9 +174,9 @@ if __name__ == '__main__':
     time.sleep(2)
 
     task: dict = dict(
-        addr=ev3_client.user_acc.get_address(),
-        route=[[50, 50, 3], [20, 0, 2], [100, 100, 5]],
-        price=144000001
+        addr=ev3_client.user_acc.get_address(), route=[[50, 50, 3], [20, 0, 2], [100, 100, 1]], price=144000001
     )
 
-
+    while True:
+        input()
+        ev3_client.publish_offer(str(task))
