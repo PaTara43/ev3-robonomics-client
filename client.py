@@ -25,7 +25,7 @@ class EV3Client:
 
     def __init__(self):
         self.seed: str = getenv("SEED")
-        self.user_acc: Account = Account(seed=self.seed, remote_ws="ws://127.0.0.1:9944")
+        self.user_acc: Account = Account(seed=self.seed)
 
         """
         Insert MQTT broker address:port here
