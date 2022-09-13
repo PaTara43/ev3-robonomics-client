@@ -36,7 +36,7 @@ class EV3Client:
         """
         Insert your client ID
         """
-        self.mqtt_client_id: str = "user_"
+        self.mqtt_client_id: str = "user_patara"
 
         self.mqtt_topics: list = [("offer", 0), ("response", 0)]
         self.mqtt_client: tp.Optional[Client] = None
@@ -151,6 +151,17 @@ class EV3Client:
         :return: Liability index, transaction hash.
 
         """
+        liability_manager = Liability(self.user_acc)
+        promisee_signature = liability_manager.sign_liability(technics, economics)
+
+        return liability_manager.create(
+            technics_hash=technics,
+            economics=economics,
+            promisee=self.user_acc.get_address(),
+            promisor=promisor,
+            promisee_params_signature=promisee_signature,
+            promisor_params_signature=promisor_signature,
+        )
 
 
 if __name__ == "__main__":
@@ -162,10 +173,10 @@ if __name__ == "__main__":
 
     time.sleep(2)
 
-    route = [[A, B, time], [A, B, time]]
-    price = price
     task: dict = dict(
-        addr=ev3_client.user_acc.get_address(), route=route, price=price
+        addr=ev3_client.user_acc.get_address(), route=[[50, 50, 3], [20, 0, 2], [100, 100, 1]], price=15400001
     )
 
-    ev3_client.publish_offer(str(task))
+    while True:
+        input()
+        ev3_client.publish_offer(str(task))
